@@ -13,6 +13,7 @@ JVM에는 대표적으로 다음 세 가지 주요 ClassLoader가 존재한다.
 ### 1. **Bootstrap ClassLoader**
 
 - JVM에 내장된 **native 코드**로 구현되어 있다.
+- JVM이 실행될 때 가장 먼저 동작해서, 자바의 실행에 절대적으로 필요한 클래스들만 메모리에 로딩한다.
 - **Java 8까지**는 `$JAVA_HOME/lib/rt.jar` 등 핵심 JAR 파일을 로드한다.
 - **Java 9 이상**에서는 `$JAVA_HOME/lib/modules` 파일에서 `java.base`, `jdk.internal.*` 등의 **핵심 모듈을 로드**한다.
 - 예시 클래스: `java.lang.String`, `java.util.List`, `java.io.InputStream` 등
@@ -37,14 +38,15 @@ JVM에는 대표적으로 다음 세 가지 주요 ClassLoader가 존재한다.
 
 ## 2. Parent Delegation Model (부모 위임 모델)
 
-클래스를 로드할 때, ClassLoader는 다음과 같은 절차를 따른다:
+클래스를 로드할 때, ClassLoader는 다음과 같은 절차를 따른다.
 
 1. **이미 로드된 클래스인지 확인**  
-   → `findLoadedClass(String name)` 호출
+   → `findLoadedClass(String name)` 호출  
+   → 로드 된 적이 있는 클래스 면 즉시 반환한다.
 
 2. **부모에게 로딩 위임**  
    → 현재 ClassLoader는 자신의 부모에게 `loadClass()` 호출  
-   → 이 위임은 재귀적으로 최상위인 **Bootstrap ClassLoader**까지 이어진다
+   → 이 위임은 재귀적으로 최상위인 **Bootstrap ClassLoader**까지 이어진다.
 
 3. **부모가 차례로 로딩 시도**  
    → 최상위인 **Bootstrap ClassLoader부터 순차적으로 로딩을 시도**  
