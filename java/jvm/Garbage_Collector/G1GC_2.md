@@ -234,22 +234,44 @@ Tri-color 모델은 “**검은색 객체는 흰색 객체를 참조하면 안 �
 
 ## 5. Concurrent Marking Cycle 전체 흐름 정리
 
-G1 GC는 Old Region의 점유율이 전체 힙의 특정 임계값(Initiating Heap Occupancy Percent)을 초과하면 Concurrent Marking Cycle을 시작한다. 이 Cycle의 시작 여부는 주로 Young GC를 계기로 체크되며, 조건을 만족하면 Young GC의 STW(Stop-the-world)에 편승하여 첫 단계를 시작한다.
+G1 GC는 Old Region의 점유율이 전체 힙의 특정 임계값(Initiating Heap Occupancy Percent)을 초과하면 Concurrent Marking Cycle을 시작한다.  
+이 Cycle의 시작 여부는 주로 Young GC를 계기로 체크되며, 조건을 만족하면 Young GC의 STW(Stop-the-world)에 편승하여 첫 단계를 시작한다.
 
-Initial Marking 단계에서는 GC Root가 직접 참조 중인 객체들만 마킹한다. 이 작업은 Young GC의 STW 상태에서 함께 수행되는데, 이는 STW를 효율적으로 재사용하고 Young GC에서도 어차피 GC Root를 탐색하므로 중복 작업을 피하기 위함이다.
+이 전체 과정은 살아있는 객체를 식별하기 위해 Tri-color Marking(White, Gray, Black)이라는 추상적인 모델을 기반으로 동작한다. 모든 객체는 초기에 '쓰레기 후보'인 White 상태에서 시작한다.
 
-Initial Marking이 끝나면, 애플리케이션 스레드와 동시에 Concurrent Marking이 진행되며, 전체 Old Region의 객체 그래프를 탐색하며 살아있는 객체를 식별(마킹)한다. 이 추적 간에, 애플리케이션 스레드가 객체 참조를 변경하면 Marking 누락이 발생할 수 있다.
+Initial Marking 단계에서는 GC Root가 직접 참조 중인 객체들만 Gray로 마킹한다. Gray는 '살아있음이 확인되었으나, 이 객체가 참조하는 다른 객체들은 아직 탐색하지 않은 상태'를 의미한다.  
+이 작업은 Young GC의 STW 상태에서 함께 수행되는데, 이는 STW를 효율적으로 재사용하고 Young GC에서도 어차피 GC Root를 탐색하므로 중복 작업을 피하기 위함이다.
 
-이런 누락을 방지하기 위해 SATB(Snapshot-At-The-Beginning) 기법이 있다. 애플리케이션 스레드에서 참조 상태를 변경할 때, Write Barrier가 개입해서 변경되기 전 객체를 SATB 버퍼에 저장한다. SATB 버퍼에 저장된 객체들은 나중에 일괄 마킹을 하여 정말 삭제하면 안 될 객체가 누락되는 것을 방지한다.
+Initial Marking이 끝나면, 애플리케이션 스레드와 동시에 Concurrent Marking이 진행된다.
 
-대신 참조가 이미 끊긴 객체도 생존 객체로 오인될 수 있다. 이런 객체를 **Floating Garbage(떠다니는 쓰레기)**라 하며, G1 GC의 보수적인 처리 방식에 해당한다.
+이 단계의 목표는 Gray 객체들을 탐색하여 그들이 참조하는 White 객체를 찾아내고, 이들을 다시 Gray로 만드는 작업을 반복하는 것이다.  
+탐색을 마친 Gray 객체는 '완전히 확인된 생존 객체'인 Black으로 변경된다.
 
-또한, Concurrent Marking 중 Young GC가 실행될 때 Old Region으로 승격되는 객체도 마킹에서 누락될 위험이 있다. 이런 누락도 방지하기 위해 TAMS(Top-At-Mark-Start) 기법이 있다. 각 Old Region은 '다음 객체가 할당될 위치'를 가리키는 Top Pointer를 갖고 있는데, TAMS는 Initial Mark 직후 이 Top Pointer의 값을 기록해 둔 **'기준선(Boundary Line)'**이다.
+전체 Old Region의 객체 그래프를 탐색하며 살아있는 객체를 식별(마킹)하는 이 추적 간에, 애플리케이션 스레드가 객체 참조를 변경하면 Marking 누락이 발생할 수 있다. (예: Black 객체가 White 객체를 새롭게 참조하는 경우)
 
-이 기준선 정보를 통해, Concurrent Marking 중 Old Region에 새로 승격된 객체도 "새롭게 들어온 것"임을 알 수 있어서, 해당 객체를 무조건 살아있는 것으로 간주하여 안전성을 확보한다. TAMS 이후 들어오는 객체를 Above TAMS, 이전에 이미 존재하던 객체는 Below TAMS라고 부른다.
+이런 누락을 방지하기 위해 SATB(Snapshot-At-The-Beginning) 기법이 있다.  
+애플리케이션 스레드에서 참조 상태를 변경할 때, Write Barrier가 개입해서 변경되기 전 객체를 SATB 버퍼에 저장한다.
+
+SATB 버퍼에 저장된 객체들은 나중에 '살아있을 가능성이 있는 객체'로 간주되어, 다시 Gray로 마킹되어 탐색 대상에 포함된다.  
+이렇게 함으로써 정말 삭제하면 안 될 객체가 누락되는 것을 방지한다.
+
+대신 참조가 이미 끊긴 객체도 생존 객체로 오인될 수 있다. 이런 객체를 **Floating Garbage(떠다니는 쓰레기)** 라 하며, G1 GC의 보수적인 처리 방식에 해당한다.
+
+또한, Concurrent Marking 중 Young GC가 실행될 때 Old Region으로 승격되는 객체도 마킹에서 누락될 위험이 있다. 이런 누락도 방지하기 위해 TAMS(Top-At-Mark-Start) 기법이 있다.  
+각 Old Region은 '다음 객체가 할당될 위치'를 가리키는 Top Pointer를 갖고 있는데, TAMS는 Initial Mark 직후 이 Top Pointer의 값을 기록해 둔 **'기준선(Boundary Line)'** 이다.
+
+이 기준선 정보를 통해, Concurrent Marking 중 Old Region에 새로 승격된 객체도 "새롭게 들어온 것"임을 알 수 있어서, 해당 객체를 마킹 과정과 상관없이 무조건 살아있는 것으로 간주하여 안전성을 확보한다.  
+TAMS 이후 들어오는 객체를 Above TAMS, 이전에 이미 존재하던 객체는 Below TAMS라고 부른다.
 
 Concurrent Marking이 끝나면 Remark 단계가 시작된다. 이때는 잠깐의 STW 상태가 발생하며, 이 시간을 이용해 SATB 버퍼에 있는 모든 객체와 그 자손들을 마킹하여 살아있는 객체 식별을 최종 완료한다.
 
-그 다음 Cleanup 단계가 진행된다. 이 단계는 대부분 애플리케이션 스레드와 병행하여 실행되지만, 일부 작업은 STW에서 수행된다. 이 단계에서는 Remark까지의 정보를 바탕으로 어떤 Region에 쓰레기가 가장 많은지를 파악하고, 100% 쓰레기로 가득 찬 Region은 즉시 정리된다. (참조가 없는 Humongous 객체 포함)
+이 단계의 최종 목표는 힙 내에 더 이상 Gray 상태의 객체가 남아있지 않도록 하는 것이다. 모든 탐색이 끝나면 힙에는 Black 객체(생존)와 White 객체(쓰레기)만 남게 된다.
 
-마지막으로 STW와 함께 Mixed GC가 시작된다. 모든 Young Region과, Cleanup 단계에서 수집된 정보를 기준으로 '쓰레기가 많아 가장 효율적인' 일부 Old Region이 **CSet(Collection Set)**으로 선정된다. GC는 CSet으로 선정된 Region들 안에서 살아있는 것으로 판명된 객체들만 새로운 Region으로 복사(Evacuation)하고, 기존 Region들은 비워내면서 사이클을 마무리한다.
+그 다음 Cleanup 단계가 진행된다. 이 단계는 대부분 애플리케이션 스레드와 병행하여 실행되지만, 일부 작업은 STW에서 수행된다.
+
+이 단계에서는 Remark까지의 정보를 바탕으로, 마킹이 끝난 후에도 여전히 White 상태로 남아있는 모든 객체를 '쓰레기'로 간주한다.
+
+이를 통해 어떤 Region에 쓰레기가 가장 많은지를 파악하고, 100% 쓰레기로 가득 찬 Region(즉, 모든 객체가 White인 Region)은 즉시 정리된다. (참조가 없는 Humongous 객체 포함)
+
+마지막으로 STW와 함께 Mixed GC가 시작된다. 모든 Young Region과, Cleanup 단계에서 수집된 정보를 기준으로 '쓰레기가 많아 가장 효율적인' 일부 Old Region이 **CSet(Collection Set)** 으로 선정된다.  
+GC는 CSet으로 선정된 Region들 안에서 살아있는 것으로 판명된 객체들(즉, Black으로 마킹되었던 객체들)만 새로운 Region으로 복사(Evacuation)하고, 기존 Region들은 비워내면서 사이클을 마무리한다.

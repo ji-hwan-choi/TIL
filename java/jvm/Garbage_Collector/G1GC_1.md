@@ -173,9 +173,9 @@ G1GC는 다음 네 가지 단계를 중심으로 동작한다.
   > 1. Young GC 시작시 모든 Eden Region과 Survivor Region으로 CSet을 구성한다.
   > 2. GC Root에서 시작하는 객체 참조 그래프를 추적하여 CSet 내 객체에 도달하면 해당 객체는 즉시 새로운 Region으로 복사한다.
   > 3. CSet에 포함된 각 Region의 RSet을 스캔하여 Old Region에서 참조하는 객체를 발견하면, 해당 객체 또한 즉시 새로운 Region으로 복사합니다. (2, 3번 병렬 수행)
-  > 4. 모든 생존 객체 복사가 완료되면, CSet에 포함되었던 기존 Region들을 통째로 회수(Reclaim)하여 비웁니다.
+  > 4. 모든 생존 객체 복사가 완료되면, CSet에 포함되었던 기존 Region들을 통째로 회수(Reclaim)하여 비운다.
   >
-  > 정지 시간(STW)은 발생하지만, 대상 Region 수가 많지 않아 멈춤 시간은 짧다.
+  > 정지 시간(STW)은 발생하지만, 대상 Region 수가 많지 않아 STW 시간은 짧다.
 
 - **중요한 부가 동작**  
    Young GC가 실행되면, G1은 **Old 영역을 수집할 준비로서 Concurrent Marking 사이클을 시작**한다.  
