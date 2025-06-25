@@ -71,7 +71,7 @@ Old Region의 객체가 Young Region의 객체를 참조하면, Write Barrier가
 ### 결론 요약
 
 - **객체가 다른 객체를 참조할 때**, GC가 효율적으로 살아 있는 객체를 찾기 위해 Card Table을 활용한다.
-- **Card Table은 Old 객체가 Young 객체를 참조하는 경우**에만 Dirty 처리를 한다.
+- **Card Table은 Old 객체가 다른 객체를 참조하는 경우** Dirty 처리를 한다.
 - Dirty 카드만 검사하면 되므로, **전체 Old 영역을 풀스캔하지 않아도 된다.**
 - 이 Dirty 카드 정보를 Region별로 모아둔 것이 **RSet**이다.
 - **RSet이 없다면** GC는 모든 Card Table을 뒤져야 한다.
@@ -134,8 +134,11 @@ Old Region은 각각 **Top 포인터(Top Pointer)** 를 갖고 있으며, 이는
 이는 **보수적인 생존 판단 방식**으로, 실제로는 이미 쓰레기인 객체임에도 마킹 대상에서 제외되지 않아 **Floating Garbage**가 발생할 수 있다.
 
 이러한 개념이 필요한 이유는, **Concurrent Marking 도중에 Young GC가 발생하여 객체가 Old Region으로 승격될 수 있기 때문**이다.  
-이때 승격된 객체는 Initial Mark 이후에 생성된 것이므로, **별도의 기준이 없다면 마킹에서 누락될 위험이 존재**한다.  
-따라서 G1GC는 TAMS를 기준으로 설정하고, **Above TAMS에 위치한 객체는 모두 살아 있는 것으로 간주**함으로써 **안전성을 확보**한다.
+Old Region에 있는 객체 A가 Young Region에 있는 B 객체를 참조하고 있다.  
+B 객체는 Young GC로 인해 Old Region으로 승격 되었고, A 객체가 이미 마킹이 끝났을 경우 B 객체는 마킹 누락이 될 수 있다.  
+이러한 마킹 누락을 없애기 위해 Top Pointer 이후의 객체는 모두 생존 시키려는 것이다.
+
+> G1GC는 TAMS를 기준으로 설정하고, **Above TAMS에 위치한 객체는 모두 살아 있는 것으로 간주**함으로써 **안전성을 확보**한다.
 
 ---
 
