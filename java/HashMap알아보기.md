@@ -50,7 +50,7 @@
 `map.put("key", "value");` 메서드를 호출하면,  
 put 메서드 내부에서 다음과 같이 putVal 메서드를 호출한다.  
 `putVal(hash(key), key, value, false, true);`  
-내부 자료구조인 `table`에 노드를 생성해서 값을 넣어야 하는데, 몇번째 배열에 넣을지 계산을 해야한다.  
+내부 배열인 `table`에 노드를 생성해서 값을 넣어야 하는데, 몇번째 배열에 넣을지 계산을 해야한다.  
 보통의 해시법은 `hash % capacity(table.length)` 계산으로 몇번째 배열에 넣을지 계산한다.  
 하지만 `capacity`는 항상 2의 거듭제곱인 점을 이용해 `(capacity-1) & hash` 이와 같이 비트와이즈 연산을 통해 table의 몇번째 배열에 넣을지 계산한다.  
 `capacity`의 값이 2의 거듭제곱일 시, `hash % capacity(table.length)` 와 `(capacity-1) & hash` 연산은 **완벽하게 동일한 결과**가 나온다.
